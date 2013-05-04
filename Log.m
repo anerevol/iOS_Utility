@@ -2,12 +2,7 @@
 #import "Log.h"
 #import <unistd.h>
 
-// 在设置词典中的键名
-#define LOG_INFO_NAME @"LogLevelInfo"
-#define LOG_WARNING_NAME @"LogLevelWarning"
-#define LOG_ERROR_NAME @"LogLevelError"
-#define LOG_FILE_PATH_NAME @"LogFilePath"
-#define LOG_WRITE_TO_FILE_NAME @"LogWriteToFile"
+
 
 
 #define INVALID_FD -1
