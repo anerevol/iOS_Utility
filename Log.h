@@ -15,23 +15,38 @@ extern "C" {
     
 #define ENABLE_LOG 1
 #ifdef ENABLE_LOG
+ 
+// 这里用宏的目的是将调用函数的函数名以及调用的行号打印出来 
+#define createLogFunc(name, format, arg...)\
+void _##name(NSString*);\
+{\
+    NSString* newFormat = [NSString stringWithFormat:@"[func:%s,line:%d]:%@%@", __func__, __LINE__, @"%@", format];\
+    newFormat = [NSString stringWithFormat:newFormat, @"", ##arg];\
+    _##name(newFormat);\
+}
+   
 // 普通描述信息
-     void _LogInfo(NSString*, ...);
-
+#define logInfo(format, arg...) createLogFunc(logInfo, format, ##arg)
+    
 // 警告信息
-     void _LogWarning(NSString*, ...);
-
+#define logWarning(format, arg...) createLogFunc(logWarning, format, ##arg)
+    
 // 错误信息
-     void _LogError(NSString*, ...);
-    
-#define LogInfo(format, arg...) {NSString* newFormat = [NSString stringWithFormat:@"%s:%@", __func__, format]; _LogInfo(newFormat, ##arg);}
-    
-#define LogWarning(format, arg...) {NSString* newFormat = [NSString stringWithFormat:@"%s:%@", __func__, format]; _LogWarning(newFormat, ##arg);}
-    
-#define LogError(format, arg...) {NSString* newFormat = [NSString stringWithFormat:@"%s:%@", __func__, format]; _LogError(newFormat, ##arg);}
+#define logError(format, arg...) createLogFunc(logError, format, ##arg)
+
 
 // 设置日志配置文件路径    
-    extern void LogReadConfig(NSString* logConfigFilePath);
+void logReadConfig(NSString* logConfigFilePath);
+    
+typedef enum
+{
+    LOG_INFO = 1,
+    LOG_WARNING = 1 << 1,
+    LOG_ERROR = 1 << 2
+}LogLevel;
+    
+void setLogLevel(LogLevel level);
+void setLogFilePath(NSString* filePath);
     
 #else
     #define LogInfo(...) {}

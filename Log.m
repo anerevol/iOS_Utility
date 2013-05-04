@@ -2,8 +2,7 @@
 #import "Log.h"
 #import <unistd.h>
 
-
-
+static NSString* progressName = nil;
 
 #define INVALID_FD -1
 
@@ -11,92 +10,99 @@
  
 
 // 原始的stdErr文件描述符
-static int _rawStdErrFD = INVALID_FD;
+static int _logFileFD = INVALID_FD;
 
 // 是否写到文件
 static BOOL _isWriteToFile = NO;
 
 NSString* _logConfigFilePath = nil;
 
-enum _IFlyLogLevel
-{
-    LOG_INFO = 1,
-    LOG_WARNING = 2,
-    LOG_ERROR = 4
-};
 
 static int _logLevel = LOG_INFO | LOG_WARNING | LOG_ERROR; 
 
-typedef enum _IFlyLogLevel IFlyLogLevel;
-
-// 重定向stdErr到指定路径
-static void redirectLogInfo(NSString* logFilePath)
+NSString* nowTime()
 {
-    FILE* logFile = fopen([logFilePath UTF8String], "a+");
-    if(logFile != NULL)
-    {
-        fclose(logFile);
-        if(_rawStdErrFD == INVALID_FD)
-        {
-            _rawStdErrFD = dup(STDERR_FILENO);
-        }
-        freopen([logFilePath UTF8String], "a+", stderr);
-    }
+    NSDate *date = [NSDate date];
+    NSCalendar *calendar = [NSCalendar currentCalendar];
+    NSDateComponents *comps;
+    comps = [calendar components:(NSYearCalendarUnit | NSMonthCalendarUnit | NSDayCalendarUnit | NSHourCalendarUnit | NSMinuteCalendarUnit | NSSecondCalendarUnit) fromDate:date];
+    
+    return [NSString stringWithFormat:@"%.2d-%.2d %.2d:%.2d:%.2d",(int)[comps month],(int)[comps day],(int)[comps hour],(int)[comps minute],(int)[comps second]];
 }
 
-// 恢复stdErr的重定向
-static void resumeLogInfo()
+
+
+void openLogFile(NSString* logFilePath)
 {
-    fflush(stderr);
-    if(_rawStdErrFD != INVALID_FD)
-    {   
-         dup2(_rawStdErrFD, STDERR_FILENO);
+    if (_logFileFD != INVALID_FD)
+    {
+        close(_logFileFD);
     }
+    
+    _logFileFD = open([logFilePath UTF8String], O_RDWR | O_CREAT | O_APPEND, S_IRWXU | S_IRWXG | S_IRWXO);
+    if (_logFileFD <= 0)
+    {
+        perror("open logfile fail!!");
+    }
+    
+
 }
 
 // 实际的日志输出操作
-#define _DO_LOG(format,levelInfo)\
+#define doLog(format,levelInfo)\
 {\
-    va_list arg_prt;\
-    NSMutableString* newFormat = [NSMutableString stringWithFormat:@"<%@>:%@", (levelInfo), (format)];\
-    va_start(arg_prt, format);\
-    NSLogv(newFormat, arg_prt);\
-    va_end(arg_prt);\
+    if (progressName == nil)\
+    {\
+        progressName = [[NSProcessInfo processInfo] processName];\
+    }\
+    NSMutableString* newFormat = [NSMutableString stringWithFormat:@"%@ %@<%@>%@\n", nowTime(), progressName,(levelInfo), (format)];\
+    const char* str = [newFormat UTF8String];\
+    size_t len = strlen(str);\
+    write(STDERR_FILENO, str, len);\
+    if (_isWriteToFile && _logFileFD != INVALID_FD)\
+    {\
+        write(_logFileFD, str, len);\
+    }\
 }
 
 #ifdef ENABLE_LOG
-void _LogInfo(NSString* format, ...)
-{
-    if(_logLevel & LOG_INFO)
-    {
-        _DO_LOG(format, @"Info");
-    }
+
+#define logFuncImp(funcName, funcDes, fiterKeyName)\
+void _##funcName(NSString* format)\
+{\
+    if(_logLevel & fiterKeyName)\
+    {\
+        doLog(format, funcDes);\
+    }\
 }
 
-void _LogWarning(NSString* format, ...)
-{
-    if(_logLevel & LOG_WARNING)
-    {
-        _DO_LOG(format, @"Warning");
-    }
-}
+logFuncImp(logInfo, @"Info", LOG_INFO)
+logFuncImp(logWarning, @"Warning", LOG_WARNING)
+logFuncImp(logError, @"Error", LOG_ERROR)
 
-void _LogError(NSString* format, ...)
-{
-    if(_logLevel & LOG_ERROR)
-    {
-        _DO_LOG(format, @"Error");
-    }
-
-}
 #endif
 
+void setLogLevel(LogLevel level)
+{
+    _logLevel = level;
+}
 
-// 设置日志配置文件路径    
-void LogReadConfig(NSString* logConfigFilePath)
+void setLogFilePath(NSString* filePath)
+{
+    if (filePath != nil)
+    {
+        NSMutableDictionary* configDic = [NSMutableDictionary dictionaryWithContentsOfFile:_logConfigFilePath];
+        [configDic setObject:filePath forKey:LOG_FILE_PATH_NAME];
+        [configDic writeToFile:_logConfigFilePath atomically:YES];
+        
+        openLogFile(filePath);
+    }
+}
+
+// 设置日志配置文件路径
+void logReadConfig(NSString* logConfigFilePath)
 {
     NSDictionary* configDic = [NSDictionary dictionaryWithContentsOfFile:logConfigFilePath];
-    
     if(configDic != nil)
     {
         [_logConfigFilePath release];
@@ -132,23 +138,7 @@ void LogReadConfig(NSString* logConfigFilePath)
         if([isWriteToFile isEqualToString:@"YES"])
         {
             _isWriteToFile = YES;
-            redirectLogInfo(logFilePath);
-        }
-        
-    }
-}
-
-// 设置日志文件路径
-static void setLogFilePath(NSString* logFilePath)
-{
-    if(logFilePath != NULL)
-    {
-        NSMutableDictionary* configDic = [NSMutableDictionary dictionaryWithContentsOfFile:_logConfigFilePath];
-        [configDic setObject:logFilePath forKey:LOG_FILE_PATH_NAME];
-        
-        if(_isWriteToFile)
-        {
-            redirectLogInfo(logFilePath);
+            openLogFile(logFilePath);
         }
     }
 }
