@@ -1,6 +1,8 @@
 #import <Foundation/Foundation.h>
 #import "Log.h"
 #import <unistd.h>
+#import <sys/fcntl.h>
+#include <sys/stat.h>
 
 static NSString* progressName = nil;
 
@@ -13,12 +15,18 @@ static NSString* progressName = nil;
 static int _logFileFD = INVALID_FD;
 
 // 是否写到文件
-static BOOL _isWriteToFile = NO;
+static BOOL _isWriteToFile = YES;
+
+static off_t _logFileSize = 0;
 
 NSString* _logConfigFilePath = nil;
+NSString* _logFilePath = nil;
 
 
-static int _logLevel = LOG_INFO | LOG_WARNING | LOG_ERROR; 
+
+static int _logLevel = LOG_INFO | LOG_WARNING | LOG_ERROR;
+
+#define LOG_FILE_MAX_SIZE (2 << 10)*400  // 400k
 
 NSString* nowTime()
 {
@@ -43,26 +51,57 @@ void openLogFile(NSString* logFilePath)
     if (_logFileFD <= 0)
     {
         perror("open logfile fail!!");
+        return;
     }
     
+    struct stat fileStat;
+    fstat(_logFileFD, &fileStat);
+    _logFileSize = fileStat.st_size;
+}
 
+void clearLogFile()
+{
+    struct stat fileStat;
+    fstat(_logFileFD, &fileStat);
+    off_t fileSize = fileStat.st_size;
+    if (fileSize > LOG_FILE_MAX_SIZE)
+    {
+        close(_logFileFD);
+        NSString* logFileBack = [_logFilePath stringByAppendingString:@"_bak"];
+        NSString* cmd = [NSString stringWithFormat:@"mv %@ %@", _logFilePath, logFileBack];
+        system([cmd UTF8String]);
+        openLogFile(_logFilePath);
+    }
+
+    
 }
 
 // 实际的日志输出操作
-#define doLog(format,levelInfo)\
-{\
-    if (progressName == nil)\
-    {\
-        progressName = [[NSProcessInfo processInfo] processName];\
-    }\
-    NSMutableString* newFormat = [NSMutableString stringWithFormat:@"%@ %@<%@>%@\n", nowTime(), progressName,(levelInfo), (format)];\
-    const char* str = [newFormat UTF8String];\
-    size_t len = strlen(str);\
-    write(STDERR_FILENO, str, len);\
-    if (_isWriteToFile && _logFileFD != INVALID_FD)\
-    {\
-        write(_logFileFD, str, len);\
-    }\
+void doLog(NSString* format, NSString* levelInfo)
+{
+    if (progressName == nil)
+    {
+        progressName = [[NSProcessInfo processInfo] processName];
+    }
+    NSMutableString* newFormat = [NSMutableString stringWithFormat:@"<%@>%@",(levelInfo), (format)];
+    NSLog(@"%@", newFormat);
+    newFormat = [NSMutableString stringWithFormat:@"%@ %@%@\n", nowTime(), progressName,(newFormat)];
+    const char* str = [newFormat UTF8String];
+    size_t len = strlen(str);
+    if (_isWriteToFile && _logFileFD != INVALID_FD)
+    {
+        int writed = write(_logFileFD, str, len);
+        _logFileSize += writed;
+        if (writed <= 0)
+        {
+            close(_logFileFD);
+            openLogFile(_logConfigFilePath);
+        }
+        else if (_logFileSize > LOG_FILE_MAX_SIZE)
+        {
+            clearLogFile();
+        }
+    }
 }
 
 #ifdef ENABLE_LOG
@@ -75,7 +114,7 @@ void _##funcName(NSString* format)\
         doLog(format, funcDes);\
     }\
 }
-
+logFuncImp(logMass, @"Mass", LOG_MASS)
 logFuncImp(logInfo, @"Info", LOG_INFO)
 logFuncImp(logWarning, @"Warning", LOG_WARNING)
 logFuncImp(logError, @"Error", LOG_ERROR)
@@ -96,6 +135,7 @@ void setLogFilePath(NSString* filePath)
         [configDic writeToFile:_logConfigFilePath atomically:YES];
         
         openLogFile(filePath);
+        _logFilePath = [filePath copy];
     }
 }
 
@@ -114,6 +154,12 @@ void logReadConfig(NSString* logConfigFilePath)
         if([levelInfo isEqualToString:@"YES"])
         {
             _logLevel |= LOG_INFO;
+        }
+        
+        levelInfo = [configDic objectForKey:LOG_MASS_NAME];
+        if([levelInfo isEqualToString:@"YES"])
+        {
+            _logLevel |= LOG_MASS;
         }
         
         // 判断logWarning是否打开
