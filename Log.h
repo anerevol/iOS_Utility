@@ -3,6 +3,7 @@
 
 
 // 在设置词典中的键名
+#define LOG_MASS_NAME @"LogLevelInfo"
 #define LOG_INFO_NAME @"LogLevelInfo"
 #define LOG_WARNING_NAME @"LogLevelWarning"
 #define LOG_ERROR_NAME @"LogLevelError"
@@ -26,6 +27,9 @@ void _##name(NSString*);\
 }
    
 // 普通描述信息
+#define logMass(format, arg...) createLogFunc(logMass, format, ##arg)
+    
+// 普通描述信息
 #define logInfo(format, arg...) createLogFunc(logInfo, format, ##arg)
     
 // 警告信息
@@ -40,18 +44,20 @@ void logReadConfig(NSString* logConfigFilePath);
     
 typedef enum
 {
-    LOG_INFO = 1,
-    LOG_WARNING = 1 << 1,
-    LOG_ERROR = 1 << 2
+    LOG_MASS = 1,
+    LOG_INFO = 1 << 1,
+    LOG_WARNING = 1 << 2,
+    LOG_ERROR = 1 << 3
 }LogLevel;
     
 void setLogLevel(LogLevel level);
 void setLogFilePath(NSString* filePath);
     
 #else
-    #define LogInfo(...) {}
-    #define LogWarning(...) {}
-    #define LogError(...) {}
+    #define logMass(...) {}
+    #define logInfo(...) {}
+    #define logWarning(...) {}
+    #define logError(...) {}
 #endif
     
 #ifdef __cplusplus
