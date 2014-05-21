@@ -118,6 +118,11 @@ static const char* landscapeViewKey = "landscapeView";
 
 - (void)setViewProperty:(NSDictionary*)dic
 {
+    if (![self shouldDescendIntoSubviews])
+    {
+        return;
+    }
+    
     for (NSString* key in [self supportedProperty])
     {
         [self setValue:dic[key] forKey:key];
@@ -134,6 +139,21 @@ static const char* landscapeViewKey = "landscapeView";
         NSDictionary* properties = subViewProperties[i];
         [subView setViewProperty:properties];
     }
+}
+
+- (BOOL)shouldDescendIntoSubviews
+{
+    if ( [self isKindOfClass:[UISlider class]] ||
+        [self isKindOfClass:[UISwitch class]] ||
+        [self isKindOfClass:[UITextField class]] ||
+        [self isKindOfClass:[UIWebView class]] ||
+        [self isKindOfClass:[UITableView class]] ||
+        [self isKindOfClass:[UIPickerView class]] ||
+        [self isKindOfClass:[UIDatePicker class]] ||
+        [self isKindOfClass:[UITextView class]] ||
+        [self isKindOfClass:[UIProgressView class]] ||
+        [self isKindOfClass:[UISegmentedControl class]] ) return NO;
+    return YES;
 }
 
 @end
